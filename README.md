@@ -2,6 +2,9 @@
 
 Pipeline ETL end-to-end para dados de e-commerce, integrando múltiplas fontes de dados, limpando e transformando dados brutos, e carregando-os em um banco de dados relacional para suportar análises e tomada de decisões.
 
+## Objective:
+To build a data pipeline for an e-commerce platform that consolidates orders, customers, products, payments, and reviews into an analytical model (star schema), ready for sales, logistics, and customer satisfaction analysis.
+
 ## 📋 Índice
 
 - [Visão Geral](#visão-geral)
@@ -45,6 +48,9 @@ ecommerce-data-pipeline-etl/
 │       ├── config.py                  # Leitura de configs (YAML/env)
 │       └── logger.py                  # Logging centralizado
 │
+├── notebook/
+│   ├── 01_exploratory_analysis.ipynb
+│   
 ├── config/
 │   ├── database.yaml
 │   └── pipeline.yaml
