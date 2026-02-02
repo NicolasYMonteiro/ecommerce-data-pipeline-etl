@@ -1,0 +1,22 @@
+# Configurações dos Datasets
+
+datasets:
+  # Mapeamento de nomes de datasets para arquivos
+  customers:
+    file: "olist_customers_dataset.csv"
+  geolocation:
+    file: "olist_geolocation_dataset.csv"
+  order_items:
+    file: "olist_order_items_dataset.csv"
+  order_payments:
+    file: "olist_order_payments_dataset.csv"
+  order_reviews:
+    file: "olist_order_reviews_dataset.csv"
+  orders:
+    file: "olist_orders_dataset.csv"
+  products:
+    file: "olist_products_dataset.csv"
+  sellers:
+    file: "olist_sellers_dataset.csv"
+  category_translation:
+    file: "product_category_name_translation.csv"

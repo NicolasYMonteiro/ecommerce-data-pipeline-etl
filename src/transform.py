@@ -4,11 +4,15 @@ Responsável por limpeza, padronização, enriquecimento e criação de métrica
 """
 
 import pandas as pd
-import logging
 from typing import Dict
 from datetime import datetime
 
-logger = logging.getLogger(__name__)
+try:
+    from .utils.logger import get_logger
+except ImportError:
+    from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 # ============================================================================

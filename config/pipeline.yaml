@@ -1,0 +1,28 @@
+# Configurações do Pipeline ETL
+
+pipeline:
+  # Comportamento do pipeline
+  load_to_db: false  # Pode ser sobrescrito por LOAD_TO_DB env var
+  batch_size: 1000
+  enable_validation: true
+
+paths:
+  # Diretórios (relativos ao projeto ou absolutos)
+  data_dir: "dataset/raw"
+  logs_dir: "logs"
+  project_root: "."
+
+database:
+  # Configurações padrão (podem ser sobrescritas por variáveis de ambiente)
+  host: "localhost"
+  port: 5432
+  name: "ecommerce_olist"
+  user: "postgres"
+  password: "postgres"
+
+logging:
+  # Configurações de logging
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_logging: true
+  log_file: "pipeline.log"

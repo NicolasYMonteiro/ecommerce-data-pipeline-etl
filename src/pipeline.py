@@ -3,7 +3,6 @@ Módulo de Orquestração do Pipeline ETL
 Coordena as etapas de Extract, Transform e Load
 """
 
-import logging
 from typing import Dict
 from datetime import datetime
 from pathlib import Path
@@ -13,13 +12,17 @@ try:
     from .extract import extract_all
     from .transform import transform_all
     from .load import load_all, get_connection_params
+    from .utils.logger import get_logger
+    from .utils.config import config
 except ImportError:
     # Para execução direta
     from extract import extract_all
     from transform import transform_all
     from load import load_all, get_connection_params
+    from utils.logger import get_logger
+    from utils.config import config
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def run_etl(data_path: str = None) -> Dict:

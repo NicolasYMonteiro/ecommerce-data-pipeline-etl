@@ -3,7 +3,6 @@ Módulo de Carregamento de Dados
 Responsável pelo carregamento em PostgreSQL (staging e star schema)
 """
 
-import logging
 import pandas as pd
 import numpy as np
 from typing import Dict, Optional
@@ -12,14 +11,15 @@ from pathlib import Path
 import psycopg2
 from psycopg2.extras import execute_values
 from psycopg2 import sql
-import os
-from dotenv import load_dotenv
 
-# Carregar variáveis de ambiente do arquivo .env
-env_path = Path(__file__).resolve().parent.parent / '.env'
-load_dotenv(dotenv_path=env_path)
+try:
+    from .utils.logger import get_logger
+    from .utils.config import config
+except ImportError:
+    from utils.logger import get_logger
+    from utils.config import config
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def convert_pandas_value(val):
@@ -872,17 +872,18 @@ class DatabaseLoader:
 
 def get_connection_params() -> Dict:
     """
-    Obtém parâmetros de conexão do ambiente ou valores padrão
+    Obtém parâmetros de conexão do banco de dados do config
     
     Returns:
         Dicionário com parâmetros de conexão
     """
+    db_config = config.database_config
     return {
-        'host': os.getenv('DB_HOST', 'localhost'),
-        'database': os.getenv('DB_NAME', 'ecommerce_olist'),
-        'user': os.getenv('DB_USER', 'postgres'),
-        'password': os.getenv('DB_PASSWORD', 'postgres'),
-        'port': os.getenv('DB_PORT', '5432')
+        'host': db_config.get('host', 'localhost'),
+        'port': db_config.get('port', 5432),
+        'database': db_config.get('name', 'ecommerce_olist'),
+        'user': db_config.get('user', 'postgres'),
+        'password': db_config.get('password', 'postgres')
     }
 
 

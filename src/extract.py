@@ -4,17 +4,18 @@ Responsável pela leitura e validação inicial dos arquivos CSV
 """
 
 import pandas as pd
-import logging
 from pathlib import Path
 from typing import Dict, Optional
 from datetime import datetime
 
-# Configuração de logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+try:
+    from .utils.logger import get_logger
+    from .utils.config import config
+except ImportError:
+    from utils.logger import get_logger
+    from utils.config import config
+
+logger = get_logger(__name__)
 
 
 # Schemas esperados para cada dataset
@@ -128,7 +129,16 @@ SCHEMAS = {
 }
 
 # Mapeamento de nomes de arquivos
-FILE_MAPPING = {
+# Mapeamento de datasets (pode ser sobrescrito por config)
+def _get_file_mapping():
+    """Obtém mapeamento de arquivos do config ou usa padrão"""
+    dataset_config = config.get('datasets', {})
+    if dataset_config:
+        return {name: info.get('file', f'olist_{name}_dataset.csv') 
+                for name, info in dataset_config.items()}
+    
+    # Fallback para mapeamento padrão
+    return {
     'customers': 'olist_customers_dataset.csv',
     'geolocation': 'olist_geolocation_dataset.csv',
     'order_items': 'olist_order_items_dataset.csv',
@@ -263,9 +273,7 @@ def extract_csv(file_path: Path, dataset_name: str) -> Optional[pd.DataFrame]:
         return None
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / 'dataset' / 'raw'
-
-def extract_all(data_path: Path = DATA_DIR) -> Dict[str, pd.DataFrame]:
+def extract_all(data_path: Path = None) -> Dict[str, pd.DataFrame]:
     """
     Extrai todos os datasets CSV do diretório especificado
     
@@ -286,7 +294,8 @@ def extract_all(data_path: Path = DATA_DIR) -> Dict[str, pd.DataFrame]:
     
     datasets = {}
     
-    for dataset_name, filename in FILE_MAPPING.items():
+    file_mapping = _get_file_mapping()
+    for dataset_name, filename in file_mapping.items():
         file_path = data_dir / filename
         df = extract_csv(file_path, dataset_name)
         
@@ -297,7 +306,7 @@ def extract_all(data_path: Path = DATA_DIR) -> Dict[str, pd.DataFrame]:
     
     elapsed_time = (datetime.now() - start_time).total_seconds()
     logger.info(f"Extração concluída em {elapsed_time:.2f} segundos")
-    logger.info(f"Total de datasets extraídos: {len(datasets)}/{len(FILE_MAPPING)}")
+    logger.info(f"Total de datasets extraídos: {len(datasets)}/{len(file_mapping)}")
     
     return datasets
 
