@@ -93,6 +93,39 @@ O módulo de extração é responsável pela leitura e validação inicial dos a
 
 **Resultados da Extração**: O módulo retorna um dicionário contendo todos os DataFrames validados, prontos para a etapa de transformação. Cada dataset é validado individualmente, garantindo que apenas dados com schema correto prossigam no pipeline. Em caso de falha na validação, o módulo registra erros detalhados no log e continua processando os demais datasets.
 
+### `src/transform.py` - Módulo de Transformação
+
+O módulo de transformação é responsável pela limpeza, padronização, enriquecimento e criação de métricas derivadas. Implementa as seguintes funcionalidades:
+
+- **Padronização de Colunas**: Conversão para lowercase e snake_case para consistência
+- **Tratamento de Valores Faltantes**: Regras específicas por dataset (strings → 'unknown', numéricos mantidos como NaN)
+- **Conversão de Datas**: Transformação de strings para datetime com validação
+- **Enriquecimento de Dados**: Merge com tradução de categorias de produtos, identificação de clientes recorrentes
+- **Criação de Métricas**: 
+  - Valor total do pedido (soma de itens + frete) - regra de negócio principal
+  - Tempo de entrega em dias e atraso em relação ao estimado
+  - Validação de coordenadas geográficas do Brasil
+- **Tabela Fato Consolidada**: Criação de tabela fato com joins de todos os datasets e agregações (pagamentos, avaliações, produtos, vendedores)
+
+**Regras de Negócio Documentadas**: Todas as regras de transformação estão documentadas no código, incluindo a regra principal de que o valor total do pedido é calculado a partir da soma dos itens + frete, pois o dataset de pedidos não traz esse campo consolidado.
+
+### `src/load.py` - Módulo de Carregamento
+
+O módulo de carregamento é responsável pela inserção dos dados no PostgreSQL, implementando uma arquitetura em duas camadas:
+
+- **Staging Layer**: Carregamento dos dados brutos com transformações mínimas
+  - Metadados de rastreabilidade: `source` e `load_timestamp` em todas as tabelas
+  - Idempotência: DELETE + INSERT por fonte, permitindo reprocessamento seguro
+  - Preservação dos dados originais para auditoria
+
+- **Analytics Layer (Star Schema)**: Modelo estrela otimizado para consultas analíticas
+  - **Dimensões**: `dim_time`, `dim_customers`, `dim_products`, `dim_sellers`, `dim_geography`
+  - **Tabela Fato**: `fact_orders` com métricas consolidadas e foreign keys para todas as dimensões
+  - **Idempotência**: UPSERT (ON CONFLICT) em todas as tabelas para garantir reprocessamento seguro
+  - **Otimizações**: Índices em foreign keys e colunas de filtro para performance
+
+**Características**: O processo de carregamento é totalmente automatizado, idempotente (pode ser executado múltiplas vezes sem duplicar dados) e otimizado para consultas analíticas. A configuração é feita via variáveis de ambiente (DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT).
+
 ## 📊 Datasets
 
 O projeto utiliza os seguintes datasets da Olist:

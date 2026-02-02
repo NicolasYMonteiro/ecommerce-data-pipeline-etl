@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ecommerce_postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-ecommerce_olist}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - etl_network
+
+  etl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ecommerce_etl
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_NAME: ${DB_NAME:-ecommerce_olist}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_PORT: 5432
+      LOAD_TO_DB: ${LOAD_TO_DB:-true}
+    volumes:
+      - ./dataset:/app/dataset
+      - ./logs:/app/logs
+    networks:
+      - etl_network
+    restart: on-failure
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  etl_network:
+    driver: bridge

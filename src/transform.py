@@ -360,7 +360,7 @@ def create_fact_table(df_orders: pd.DataFrame, df_order_items: pd.DataFrame,
         how='left'
     )
     
-    # 7. Agregações de produtos (categoria mais comum no pedido)
+    # 7. Agregações de produtos (categoria e produto principal do pedido)
     product_agg = df_order_items.merge(
         df_products[['product_id', 'product_category_name_english']],
         on='product_id',
@@ -368,17 +368,31 @@ def create_fact_table(df_orders: pd.DataFrame, df_order_items: pd.DataFrame,
     )
     product_agg['product_category_name_english'] = product_agg['product_category_name_english'].fillna('unknown')
     
-    product_agg = product_agg.groupby('order_id')['product_category_name_english'].agg(
+    # Produto mais frequente no pedido (ou primeiro se empate)
+    product_main = product_agg.groupby('order_id')['product_id'].agg(
+        lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else x.iloc[0] if len(x) > 0 else None
+    ).reset_index()
+    product_main.columns = ['order_id', 'main_product_id']
+    
+    # Categoria mais comum
+    product_category = product_agg.groupby('order_id')['product_category_name_english'].agg(
         lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else 'unknown'
     ).reset_index()
-    product_agg.columns = ['order_id', 'main_product_category']
+    product_category.columns = ['order_id', 'main_product_category']
     
+    product_agg = product_main.merge(product_category, on='order_id', how='left')
     fact_table = fact_table.merge(product_agg, on='order_id', how='left')
     
-    # 8. Agregações de vendedores (quantidade de vendedores únicos por pedido)
-    seller_agg = df_order_items.groupby('order_id')['seller_id'].nunique().reset_index()
-    seller_agg.columns = ['order_id', 'unique_sellers_count']
+    # 8. Agregações de vendedores (vendedor principal e quantidade)
+    seller_main = df_order_items.groupby('order_id')['seller_id'].agg(
+        lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else x.iloc[0] if len(x) > 0 else None
+    ).reset_index()
+    seller_main.columns = ['order_id', 'main_seller_id']
     
+    seller_count = df_order_items.groupby('order_id')['seller_id'].nunique().reset_index()
+    seller_count.columns = ['order_id', 'unique_sellers_count']
+    
+    seller_agg = seller_main.merge(seller_count, on='order_id', how='left')
     fact_table = fact_table.merge(seller_agg, on='order_id', how='left')
     
     logger.info(f"Tabela fato criada: {len(fact_table)} pedidos")

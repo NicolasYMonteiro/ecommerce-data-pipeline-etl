@@ -12,10 +12,12 @@ import pandas as pd
 try:
     from .extract import extract_all
     from .transform import transform_all
+    from .load import load_all, get_connection_params
 except ImportError:
     # Para execução direta
     from extract import extract_all
     from transform import transform_all
+    from load import load_all, get_connection_params
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,7 @@ def run_etl(data_path: str = None) -> Dict:
     logger.info(f"✓ Extração concluída: {len(datasets)} datasets")
     
     # ETAPA 2: TRANSFORM
-    logger.info("\n[ETAPA 2/2] TRANSFORMATION")
+    logger.info("\n[ETAPA 2/3] TRANSFORMATION")
     logger.info("-" * 80)
     
     transformed = transform_all(datasets)
@@ -80,7 +82,48 @@ def run_etl(data_path: str = None) -> Dict:
     if 'fact_orders' in transformed:
         logger.info(f"Tabela fato criada: {len(transformed['fact_orders'])} pedidos")
     
-    return transformed
+    return {'datasets': datasets, 'transformed': transformed}
+
+
+def run_etl_complete(data_path: str = None, load_to_db: bool = True, 
+                     connection_params: Dict = None) -> Dict:
+    """
+    Executa o pipeline ETL completo incluindo Load
+    
+    Args:
+        data_path: Caminho do diretório com os dados (opcional)
+        load_to_db: Se True, carrega dados no banco (padrão: True)
+        connection_params: Parâmetros de conexão (opcional)
+        
+    Returns:
+        Dicionário com datasets e resultados
+    """
+    # Executar Extract e Transform
+    results = run_etl(data_path)
+    
+    if not results:
+        return {}
+    
+    datasets = results.get('datasets', {})
+    transformed = results.get('transformed', {})
+    
+    # ETAPA 3: LOAD (opcional)
+    if load_to_db:
+        logger.info("\n[ETAPA 3/3] LOAD")
+        logger.info("-" * 80)
+        
+        try:
+            if connection_params is None:
+                connection_params = get_connection_params()
+            
+            load_all(datasets, transformed, connection_params)
+            logger.info("✓ Carregamento concluído")
+            
+        except Exception as e:
+            logger.error(f"Erro no carregamento: {e}")
+            logger.warning("Pipeline continuou sem carregar no banco")
+    
+    return {'datasets': datasets, 'transformed': transformed}
 
 
 def verify_results(transformed: Dict) -> None:
@@ -99,48 +142,6 @@ def verify_results(transformed: Dict) -> None:
     for name, df in transformed.items():
         if isinstance(df, pd.DataFrame):
             print(f"{name:30s} | {len(df):>10,} linhas | {len(df.columns):>3} colunas")
-    
-    # Verificação da tabela fato
-    if 'fact_orders' in transformed:
-        fact = transformed['fact_orders']
-        print("\n--- Tabela Fato (fact_orders) ---")
-        print(f"Total de pedidos: {len(fact):,}")
-        print(f"Colunas: {len(fact.columns)}")
-        
-        # Estatísticas básicas
-        if 'order_total_value' in fact.columns:
-            print(f"\nValor total dos pedidos:")
-            print(f"  Média: R$ {fact['order_total_value'].mean():.2f}")
-            print(f"  Mediana: R$ {fact['order_total_value'].median():.2f}")
-            print(f"  Total: R$ {fact['order_total_value'].sum():,.2f}")
-        
-        if 'delivery_time_days' in fact.columns:
-            valid_deliveries = fact['delivery_time_days'].notna().sum()
-            if valid_deliveries > 0:
-                print(f"\nTempo de entrega:")
-                print(f"  Média: {fact['delivery_time_days'].mean():.1f} dias")
-                print(f"  Mediana: {fact['delivery_time_days'].median():.0f} dias")
-                print(f"  Pedidos entregues: {valid_deliveries:,}")
-        
-        if 'avg_review_score' in fact.columns:
-            valid_reviews = fact['avg_review_score'].notna().sum()
-            if valid_reviews > 0:
-                print(f"\nAvaliações:")
-                print(f"  Nota média: {fact['avg_review_score'].mean():.2f}")
-                print(f"  Pedidos avaliados: {valid_reviews:,}")
-        
-        # Primeiras linhas
-        print("\n--- Primeiras 5 linhas da tabela fato ---")
-        print(fact.head().to_string())
-    
-    # Verificação de clientes recorrentes
-    if 'customers' in transformed:
-        customers = transformed['customers']
-        if 'is_recurring_customer' in customers.columns:
-            recurring = customers['is_recurring_customer'].sum()
-            total = len(customers)
-            print(f"\n--- Clientes Recorrentes ---")
-            print(f"Total: {recurring:,} / {total:,} ({recurring/total*100:.1f}%)")
     
     print("\n" + "=" * 80)
 
