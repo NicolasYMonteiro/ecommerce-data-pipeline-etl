@@ -9,7 +9,11 @@ To build a data pipeline for an e-commerce platform that consolidates orders, cu
 
 - [Visão Geral](#visão-geral)
 - [Estrutura do Projeto](#estrutura-do-projeto)
-- [Datasets](#datasets)
+- [Módulos do Pipeline](#-módulos-do-pipeline)
+- [Sistema de Configuração](#srcutilsconfigpy---sistema-de-configuração)
+- [Sistema de Logging](#srcutilsloggerpy---sistema-de-logging)
+- [Testes](#-testes)
+- [Datasets](#-datasets)
 
 ## 🎯 Visão Geral
 
@@ -52,29 +56,37 @@ ecommerce-data-pipeline-etl/
 │   ├── 01_exploratory_analysis.ipynb
 │   
 ├── config/
-│   ├── database.yaml
-│   └── pipeline.yaml
+│   ├── pipeline.yaml              # Configurações do pipeline
+│   └── dataset.yaml                # Mapeamento de datasets
 │
 ├── tests/
-│   ├── test_extract.py
-│   ├── test_transform.py
-│   ├── test_load.py
-│   └── test_pipeline.py
+│   ├── __init__.py
+│   ├── conftest.py                 # Fixtures compartilhadas
+│   ├── test_config.py              # Testes de configuração
+│   ├── test_extract.py             # Testes de extração
+│   ├── test_transform.py          # Testes de transformação
+│   └── test_pipeline.py            # Testes de pipeline
+│
+├── logs/                           # Diretório de logs (gerado automaticamente)
 │
 ├── scripts/
 │   └── run_pipeline.py   
 │
 ├── .gitignore                          # Arquivos ignorados pelo Git
+├── .env                                 # Variáveis de ambiente (não versionado)
 ├── requirements.txt                    # Dependências do projeto
-├── README.md                           # Este arquivo
+├── pytest.ini                          # Configuração do pytest
+├── docker-compose.yml                  # Orquestração Docker
+├── Dockerfile                          # Imagem Docker do ETL
+└── README.md                           # Este arquivo
 ```
 
 ### Descrição das Pastas Principais
-- **`src/utils/`**: Utilitários compartilhados como logging, configurações e funções auxiliares.
-- **`src/pipeline/`**: Orquestração principal do pipeline ETL.
-- **`config/`**: Arquivos de configuração em formato YAML para facilitar manutenção.
-- **`tests/`**: Testes organizados por módulo para garantir qualidade do código.
-- **`scripts/`**: Scripts auxiliares para setup e execução.
+- **`src/utils/`**: Utilitários compartilhados (config, logger)
+- **`config/`**: Arquivos de configuração em formato YAML (pipeline, datasets)
+- **`tests/`**: Testes unitários organizados por módulo
+- **`scripts/`**: Scripts de execução do pipeline
+- **`logs/`**: Arquivos de log gerados automaticamente
 
 ## 🔧 Módulos do Pipeline
 
@@ -124,7 +136,94 @@ O módulo de carregamento é responsável pela inserção dos dados no PostgreSQ
   - **Idempotência**: UPSERT (ON CONFLICT) em todas as tabelas para garantir reprocessamento seguro
   - **Otimizações**: Índices em foreign keys e colunas de filtro para performance
 
-**Características**: O processo de carregamento é totalmente automatizado, idempotente (pode ser executado múltiplas vezes sem duplicar dados) e otimizado para consultas analíticas. A configuração é feita via variáveis de ambiente (DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT).
+**Características**: O processo de carregamento é totalmente automatizado, idempotente (pode ser executado múltiplas vezes sem duplicar dados) e otimizado para consultas analíticas. A configuração é feita via arquivos YAML e variáveis de ambiente.
+
+### `src/utils/config.py` - Sistema de Configuração
+
+O módulo de configuração centraliza todas as configurações do pipeline, permitindo alterar comportamento sem modificar código:
+
+- **Arquivos de Configuração**:
+  - `config/pipeline.yaml`: Configurações do pipeline (paths, database, logging, behavior)
+  - `config/dataset.yaml`: Mapeamento de datasets para arquivos CSV
+  - `.env`: Variáveis de ambiente (opcional, sobrescreve YAML)
+
+- **Prioridade de Configuração**: Variáveis de ambiente > YAML > Valores padrão
+
+- **Funcionalidades**:
+  - Singleton pattern para acesso global
+  - Suporte a valores aninhados: `config.get('database.host')`
+  - Paths como objetos `Path`: `config.data_dir`, `config.logs_dir`
+  - Configurações de banco: `config.database_config`
+  - Configurações de pipeline: `config.pipeline_config`
+
+- **Exemplo de Uso**:
+  ```python
+  from src.utils.config import config
+  
+  # Acessar configurações
+  db_host = config.get('database.host')
+  data_dir = config.data_dir
+  batch_size = config.get('pipeline.batch_size')
+  ```
+
+### `src/utils/logger.py` - Sistema de Logging
+
+O módulo de logging fornece observabilidade completa do pipeline:
+
+- **Funcionalidades**:
+  - Logging simultâneo em console e arquivo
+  - Arquivos com timestamp: `pipeline_20240202.log`
+  - Níveis configuráveis (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  - Formatação padronizada com timestamp, módulo e nível
+  - Logs salvos em `logs/` (configurável)
+
+- **Integração**: Todos os módulos (`extract`, `transform`, `load`, `pipeline`) utilizam o logger centralizado
+
+- **Exemplo de Uso**:
+  ```python
+  from src.utils.logger import get_logger
+  
+  logger = get_logger(__name__)
+  logger.info("Processando dados...")
+  logger.error("Erro ao processar", exc_info=True)
+  ```
+
+## 🧪 Testes
+
+O projeto inclui uma suíte de testes para garantir qualidade e confiabilidade do código:
+
+- **Framework**: pytest com cobertura de código
+- **Estrutura**: Testes organizados por módulo em `tests/`
+
+### Executando Testes
+
+```bash
+# Executar todos os testes
+pytest
+
+# Com cobertura de código
+pytest --cov=src --cov-report=html
+
+# Teste específico
+pytest tests/test_extract.py -v
+
+# Com output detalhado
+pytest -v
+```
+
+### Cobertura de Testes
+
+- **test_config.py**: Testes do sistema de configuração (singleton, paths, database, env vars)
+- **test_extract.py**: Testes de extração (validação de schema, tipos, arquivos)
+- **test_transform.py**: Testes de transformação (padronização, tratamento de nulos, métricas, tabela fato)
+- **test_pipeline.py**: Testes de orquestração do pipeline
+
+### Fixtures Compartilhadas
+
+O arquivo `tests/conftest.py` fornece fixtures reutilizáveis:
+- `sample_orders_df`: DataFrame de exemplo para pedidos
+- `sample_order_items_df`: DataFrame de exemplo para itens
+- `temp_data_dir`: Diretório temporário para dados de teste
 
 ## 📊 Datasets
 

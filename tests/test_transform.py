@@ -19,7 +19,7 @@ def test_standardize_columns():
         'Total Value': [100.0, 200.0]
     })
     
-    result = standardize_columns(df)
+    result = standardize_columns(df, 'test_dataset')
     
     assert 'customer_id' in result.columns
     assert 'order_date' in result.columns
@@ -44,6 +44,8 @@ def test_calculate_order_metrics():
     """Testa cálculo de métricas de pedidos"""
     df = pd.DataFrame({
         'order_id': ['1', '1', '2'],
+        'order_item_id': [1, 2, 1],
+        'product_id': ['p1', 'p2', 'p1'],
         'price': [10.0, 20.0, 15.0],
         'freight_value': [5.0, 5.0, 3.0]
     })
@@ -70,6 +72,7 @@ def test_create_fact_table_structure():
     
     order_items = pd.DataFrame({
         'order_id': ['1', '1', '2'],
+        'order_item_id': [1, 2, 1],
         'product_id': ['p1', 'p2', 'p1'],
         'seller_id': ['s1', 's1', 's2'],
         'price': [10.0, 20.0, 15.0],
@@ -91,6 +94,7 @@ def test_create_fact_table_structure():
     
     customers = pd.DataFrame({
         'customer_id': ['c1', 'c2'],
+        'customer_unique_id': ['cu1', 'cu2'],
         'customer_state': ['SP', 'RJ'],
         'customer_city': ['São Paulo', 'Rio']
     })

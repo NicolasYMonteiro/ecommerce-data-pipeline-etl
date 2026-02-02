@@ -66,7 +66,8 @@ def standardize_columns(df: pd.DataFrame, dataset_name: str) -> pd.DataFrame:
         DataFrame com colunas padronizadas
     """
     df = df.copy()
-    df.columns = df.columns.str.lower().str.strip()
+    # Converter para lowercase, substituir espaços por underscore, remover espaços nas extremidades
+    df.columns = df.columns.str.lower().str.strip().str.replace(' ', '_', regex=False)
     logger.debug(f"{dataset_name}: Colunas padronizadas")
     return df
 
