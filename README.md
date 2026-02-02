@@ -76,6 +76,23 @@ ecommerce-data-pipeline-etl/
 - **`tests/`**: Testes organizados por módulo para garantir qualidade do código.
 - **`scripts/`**: Scripts auxiliares para setup e execução.
 
+## 🔧 Módulos do Pipeline
+
+### `src/extract.py` - Módulo de Extração
+
+O módulo de extração é responsável pela leitura e validação inicial dos arquivos CSV. Implementa as seguintes funcionalidades:
+
+- **Leitura de CSVs**: Extração de todos os 9 datasets do diretório `dataset/raw/`
+- **Validação de Schema**: Verificação automática das colunas esperadas em cada dataset
+- **Tipagem Inicial**: Aplicação de tipos de dados apropriados (string, Int64, Float64, float64) para otimização de memória e validação
+- **Logging de Volume**: Registro detalhado de métricas por dataset:
+  - Número de linhas e colunas
+  - Uso de memória (MB)
+  - Total de valores faltantes
+  - Tempo de execução
+
+**Resultados da Extração**: O módulo retorna um dicionário contendo todos os DataFrames validados, prontos para a etapa de transformação. Cada dataset é validado individualmente, garantindo que apenas dados com schema correto prossigam no pipeline. Em caso de falha na validação, o módulo registra erros detalhados no log e continua processando os demais datasets.
+
 ## 📊 Datasets
 
 O projeto utiliza os seguintes datasets da Olist:
