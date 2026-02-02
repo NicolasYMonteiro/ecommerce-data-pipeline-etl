@@ -258,3 +258,121 @@ O projeto utiliza os seguintes datasets da Olist:
 
 ### `product_category_name_translation.csv`
 - **Descrição**: Tradução dos nomes das categorias de produtos para inglês.
+
+## 🐳 Estrutura Docker
+
+O projeto utiliza Docker e Docker Compose para facilitar a execução e garantir consistência entre ambientes.
+
+### Arquitetura Docker
+
+O `docker-compose.yml` define dois serviços:
+
+1. **postgres**: Banco de dados PostgreSQL 15
+   - Porta: `5432` (configurável via `DB_PORT`)
+   - Volume persistente: `postgres_data` para dados do banco
+   - Healthcheck: Verifica se o banco está pronto antes de iniciar o ETL
+   - Variáveis de ambiente: `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+
+2. **etl**: Container do pipeline ETL
+   - Base: Python 3.11-slim
+   - Dependências: Instaladas via `requirements.txt`
+   - Volumes montados:
+     - `./dataset` → `/app/dataset` (dados CSV)
+     - `./logs` → `/app/logs` (arquivos de log)
+   - Dependência: Aguarda o PostgreSQL estar saudável antes de iniciar
+   - Comando: Executa `scripts/run_pipeline.py` automaticamente
+
+### Dockerfile
+
+O `Dockerfile` do ETL:
+- Instala dependências do sistema (gcc, postgresql-client)
+- Instala dependências Python do `requirements.txt`
+- Copia código fonte, scripts e dados
+- Define `PYTHONPATH` e variáveis de ambiente
+- Executa o pipeline automaticamente ao iniciar
+
+### Rede Docker
+
+- Rede isolada `etl_network` conecta os serviços
+- O container ETL acessa o PostgreSQL pelo hostname `postgres`
+
+## 🚀 Executando o Pipeline
+
+### Opção 1: Execução com Docker (Recomendado)
+
+A forma mais simples de executar o pipeline completo:
+
+```bash
+# 1. Criar arquivo .env (opcional, se quiser sobrescrever defaults)
+DB_HOST=localhost
+DB_NAME=ecommerce_olist
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_PORT=5432
+LOAD_TO_DB=true
+
+# 2. Executar com Docker Compose
+docker compose up -d --build
+
+# 3. Executar etl com logs
+docker compose logs -f etl
+
+# 4. Parar os containers
+docker compose down
+
+# 5. Parar e remover volumes (limpar dados do banco)
+docker compose down -v
+```
+
+**O que acontece:**
+1. Docker Compose inicia o PostgreSQL
+2. Aguarda o banco estar pronto (healthcheck)
+3. Constrói a imagem do ETL
+4. Inicia o container ETL que executa o pipeline automaticamente
+5. Dados são carregados no banco PostgreSQL
+
+### Opção 2: Execução Local (Sem Docker)
+
+Para executar localmente, você precisa ter Python e PostgreSQL instalados:
+
+```bash
+# 1. Criar ambiente virtual
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# ou
+.venv\Scripts\activate  # Windows
+
+# 2. Instalar dependências
+pip install -r requirements.txt
+
+# 3. Configurar banco de dados (criar .env ou editar config/pipeline.yaml)
+DB_HOST=localhost
+DB_NAME=ecommerce_olist
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_PORT=5432
+LOAD_TO_DB=true
+
+# 4. Executar pipeline
+python scripts/run_pipeline.py
+
+# Ou apenas Extract + Transform (sem carregar no banco)
+# Edite config/pipeline.yaml: load_to_db: false
+python scripts/run_pipeline.py
+```
+
+### Opção 3: Executar Apenas Testes
+
+```bash
+# Instalar dependências de teste (já incluídas no requirements.txt)
+pip install -r requirements.txt
+
+# Executar todos os testes
+pytest
+
+# Com cobertura
+pytest --cov=src --cov-report=html
+
+# Teste específico
+pytest tests/test_extract.py -v
+```
