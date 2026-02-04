@@ -49,9 +49,12 @@ class Config:
         if dataset_config_path.exists():
             with open(dataset_config_path, 'r', encoding='utf-8') as f:
                 dataset_config = yaml.safe_load(f) or {}
-                if 'datasets' not in self._config:
-                    self._config['datasets'] = {}
-                self._config['datasets'].update(dataset_config)
+                # O dataset.yaml tem 'datasets' como chave raiz, então extraímos o conteúdo
+                if 'datasets' in dataset_config:
+                    self._config['datasets'] = dataset_config['datasets']
+                elif dataset_config:
+                    # Se não tiver a chave 'datasets', assume que o conteúdo já é os datasets
+                    self._config['datasets'] = dataset_config
         
         # Configurações padrão
         self._config.setdefault('pipeline', {})
@@ -68,13 +71,16 @@ class Config:
         }
         
         # Database config (prioridade: env > yaml > defaults)
+        # Primeiro carrega valores do YAML como base
+        db_yaml = self._config.get('database', {})
+        # Depois sobrescreve com variáveis de ambiente (se existirem)
         self._config['database'] = {
-            'host': os.getenv('DB_HOST', self._config.get('database', {}).get('host', 'localhost')),
-            'port': int(os.getenv('DB_PORT', self._config.get('database', {}).get('port', 5432))),
-            'name': os.getenv('DB_NAME', self._config.get('database', {}).get('name', 'ecommerce_olist')),
-            'user': os.getenv('DB_USER', self._config.get('database', {}).get('user', 'postgres')),
-            'password': os.getenv('DB_PASSWORD', self._config.get('database', {}).get('password', 'postgres')),
-            **self._config.get('database', {})
+            **db_yaml,  # Base do YAML
+            'host': os.getenv('DB_HOST', db_yaml.get('host', 'localhost')),
+            'port': int(os.getenv('DB_PORT', str(db_yaml.get('port', 5432)))),
+            'name': os.getenv('DB_NAME', db_yaml.get('name', 'ecommerce_olist')),
+            'user': os.getenv('DB_USER', db_yaml.get('user', 'postgres')),
+            'password': os.getenv('DB_PASSWORD', db_yaml.get('password', 'postgres'))
         }
         
         # Pipeline behavior

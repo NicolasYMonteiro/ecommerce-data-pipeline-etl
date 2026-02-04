@@ -38,6 +38,9 @@ services:
     volumes:
       - ./dataset:/app/dataset
       - ./logs:/app/logs
+      - ./tests:/app/tests
+      - ./config:/app/config
+      - ./pytest.ini:/app/pytest.ini
     networks:
       - etl_network
     restart: on-failure

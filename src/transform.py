@@ -358,9 +358,9 @@ def create_fact_table(df_orders: pd.DataFrame, df_order_items: pd.DataFrame,
     fact_table = fact_table.merge(payment_metrics, on='order_id', how='left')
     fact_table = fact_table.merge(review_metrics, on='order_id', how='left')
     
-    # 6. Join com clientes
+    # 6. Join com clientes (incluindo zip_code_prefix para lookup de geografia)
     fact_table = fact_table.merge(
-        df_customers[['customer_id', 'customer_unique_id', 'customer_state', 'customer_city']],
+        df_customers[['customer_id', 'customer_unique_id', 'customer_state', 'customer_city', 'customer_zip_code_prefix']],
         on='customer_id',
         how='left'
     )

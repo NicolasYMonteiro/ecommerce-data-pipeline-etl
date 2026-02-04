@@ -307,8 +307,8 @@ class DatabaseLoader:
                 order_id VARCHAR(255) PRIMARY KEY,
                 time_id INTEGER REFERENCES analytics.dim_time(time_id),
                 customer_key INTEGER REFERENCES analytics.dim_customers(customer_key),
-                product_key INTEGER,  -- Categoria principal do pedido
-                seller_key INTEGER,  -- Vendedor principal
+                product_key INTEGER REFERENCES analytics.dim_products(product_key),
+                seller_key INTEGER REFERENCES analytics.dim_sellers(seller_key),
                 geography_key INTEGER REFERENCES analytics.dim_geography(geography_key),
                 
                 -- Métricas do pedido
@@ -341,6 +341,8 @@ class DatabaseLoader:
         indexes = [
             "CREATE INDEX IF NOT EXISTS idx_fact_orders_time ON analytics.fact_orders(time_id)",
             "CREATE INDEX IF NOT EXISTS idx_fact_orders_customer ON analytics.fact_orders(customer_key)",
+            "CREATE INDEX IF NOT EXISTS idx_fact_orders_product ON analytics.fact_orders(product_key)",
+            "CREATE INDEX IF NOT EXISTS idx_fact_orders_seller ON analytics.fact_orders(seller_key)",
             "CREATE INDEX IF NOT EXISTS idx_fact_orders_geography ON analytics.fact_orders(geography_key)",
             "CREATE INDEX IF NOT EXISTS idx_fact_orders_status ON analytics.fact_orders(order_status)",
             "CREATE INDEX IF NOT EXISTS idx_dim_time_date ON analytics.dim_time(order_date)",
@@ -740,44 +742,101 @@ class DatabaseLoader:
                 
                 fact_data['customer_key'] = fact_data['customer_id'].map(customer_map)
             
-            # Buscar geography_key
+            # Buscar geography_key (otimizado: mapeamento único)
             geography_map = {}
             if 'customer_state' in fact_data.columns and 'customer_city' in fact_data.columns:
-                for idx, row in fact_data.iterrows():
-                    state = str(row.get('customer_state', '') or '')
-                    city = str(row.get('customer_city', '') or '')
+                # Criar combinações únicas de state, city, zip_code_prefix
+                geo_combinations = fact_data[['customer_state', 'customer_city', 'customer_zip_code_prefix']].drop_duplicates()
+                
+                for _, row in geo_combinations.iterrows():
+                    state = str(row.get('customer_state', '') or '').strip()
+                    city = str(row.get('customer_city', '') or '').strip()
+                    zip_code = int(row.get('customer_zip_code_prefix', 0)) if pd.notna(row.get('customer_zip_code_prefix')) and row.get('customer_zip_code_prefix') != 0 else None
+                    
                     if state and city:
-                        cur.execute(
-                            "SELECT geography_key FROM analytics.dim_geography WHERE state = %s AND city = %s LIMIT 1",
-                            (state, city)
-                        )
-                        result = cur.fetchone()
+                        result = None
+                        # Tentar primeiro com zip_code_prefix (se disponível)
+                        if zip_code:
+                            cur.execute(
+                                "SELECT geography_key FROM analytics.dim_geography WHERE state = %s AND city = %s AND zip_code_prefix = %s LIMIT 1",
+                                (state, city, zip_code)
+                            )
+                            result = cur.fetchone()
+                        
+                        # Se não encontrou, tentar sem zip_code_prefix
+                        if not result:
+                            cur.execute(
+                                "SELECT geography_key FROM analytics.dim_geography WHERE state = %s AND city = %s AND (zip_code_prefix IS NULL OR zip_code_prefix = 0) LIMIT 1",
+                                (state, city)
+                            )
+                            result = cur.fetchone()
+                        
                         if result:
-                            geography_map[idx] = result[0]
-            
-            fact_data['geography_key'] = fact_data.index.map(geography_map)
+                            # Criar chave composta para o mapeamento
+                            geo_key = f"{state}|{city}|{zip_code if zip_code else 'NULL'}"
+                            geography_map[geo_key] = result[0]
+                
+                # Aplicar mapeamento ao DataFrame
+                def get_geography_key(row):
+                    state = str(row.get('customer_state', '') or '').strip()
+                    city = str(row.get('customer_city', '') or '').strip()
+                    zip_code = int(row.get('customer_zip_code_prefix', 0)) if pd.notna(row.get('customer_zip_code_prefix')) and row.get('customer_zip_code_prefix') != 0 else None
+                    geo_key = f"{state}|{city}|{zip_code if zip_code else 'NULL'}"
+                    return geography_map.get(geo_key)
+                
+                fact_data['geography_key'] = fact_data.apply(get_geography_key, axis=1)
             
             # Buscar product_key
             product_map = {}
+            missing_products = []
             if 'main_product_id' in fact_data.columns:
-                for product_id in fact_data['main_product_id'].dropna().unique():
+                unique_products = fact_data['main_product_id'].dropna().unique()
+                for product_id in unique_products:
                     cur.execute("SELECT product_key FROM analytics.dim_products WHERE product_id = %s", (product_id,))
                     result = cur.fetchone()
                     if result:
                         product_map[product_id] = result[0]
+                    else:
+                        missing_products.append(product_id)
+                
+                if missing_products:
+                    logger.warning(f"  ⚠ {len(missing_products)} produtos não encontrados na dimensão: {missing_products[:10]}...")
                 
                 fact_data['product_key'] = fact_data['main_product_id'].map(product_map)
+                
+                # Log estatísticas
+                total_products = len(fact_data['main_product_id'].dropna())
+                mapped_products = fact_data['product_key'].notna().sum()
+                if total_products > 0:
+                    logger.info(f"  Product keys mapeados: {mapped_products}/{total_products} ({mapped_products/total_products*100:.1f}%)")
+                else:
+                    logger.warning("  ⚠ Nenhum main_product_id encontrado na tabela fato")
             
             # Buscar seller_key
             seller_map = {}
+            missing_sellers = []
             if 'main_seller_id' in fact_data.columns:
-                for seller_id in fact_data['main_seller_id'].dropna().unique():
+                unique_sellers = fact_data['main_seller_id'].dropna().unique()
+                for seller_id in unique_sellers:
                     cur.execute("SELECT seller_key FROM analytics.dim_sellers WHERE seller_id = %s", (seller_id,))
                     result = cur.fetchone()
                     if result:
                         seller_map[seller_id] = result[0]
+                    else:
+                        missing_sellers.append(seller_id)
+                
+                if missing_sellers:
+                    logger.warning(f"  ⚠ {len(missing_sellers)} vendedores não encontrados na dimensão: {missing_sellers[:10]}...")
                 
                 fact_data['seller_key'] = fact_data['main_seller_id'].map(seller_map)
+                
+                # Log estatísticas
+                total_sellers = len(fact_data['main_seller_id'].dropna())
+                mapped_sellers = fact_data['seller_key'].notna().sum()
+                if total_sellers > 0:
+                    logger.info(f"  Seller keys mapeados: {mapped_sellers}/{total_sellers} ({mapped_sellers/total_sellers*100:.1f}%)")
+                else:
+                    logger.warning("  ⚠ Nenhum main_seller_id encontrado na tabela fato")
             
             # Selecionar colunas para inserção
             fact_columns = [
@@ -836,12 +895,86 @@ class DatabaseLoader:
         self.conn.commit()
         logger.info(f"  ✓ {len(fact_data)} pedidos carregados na tabela fato")
     
-    def load_analytics(self, transformed: Dict[str, pd.DataFrame]):
+    def ensure_products_from_order_items(self, df_order_items: pd.DataFrame, df_products: pd.DataFrame):
+        """
+        Garante que todos os produtos dos order_items estejam na dimensão de produtos
+        Cria registros 'fantasma' para produtos que aparecem nos order_items mas não na tabela de produtos
+        
+        Args:
+            df_order_items: DataFrame de order_items
+            df_products: DataFrame de produtos
+        """
+        if df_order_items.empty or 'product_id' not in df_order_items.columns:
+            return
+        
+        # Produtos únicos dos order_items
+        products_in_items = set(df_order_items['product_id'].dropna().unique())
+        
+        # Produtos já na dimensão
+        products_in_dim = set(df_products['product_id'].dropna().unique()) if not df_products.empty else set()
+        
+        # Produtos faltantes
+        missing_products = products_in_items - products_in_dim
+        
+        if missing_products:
+            logger.info(f"  Adicionando {len(missing_products)} produtos faltantes dos order_items à dimensão...")
+            
+            # Criar registros 'fantasma' para produtos faltantes
+            ghost_products = pd.DataFrame({
+                'product_id': list(missing_products),
+                'product_category_name': [None] * len(missing_products),
+                'product_category_name_english': ['unknown'] * len(missing_products),
+                'product_weight_g': [None] * len(missing_products),
+                'product_length_cm': [None] * len(missing_products),
+                'product_height_cm': [None] * len(missing_products),
+                'product_width_cm': [None] * len(missing_products)
+            })
+            
+            # Carregar produtos fantasma na dimensão
+            self.load_dim_products(ghost_products)
+    
+    def ensure_sellers_from_order_items(self, df_order_items: pd.DataFrame, df_sellers: pd.DataFrame):
+        """
+        Garante que todos os vendedores dos order_items estejam na dimensão de vendedores
+        Cria registros 'fantasma' para vendedores que aparecem nos order_items mas não na tabela de vendedores
+        
+        Args:
+            df_order_items: DataFrame de order_items
+            df_sellers: DataFrame de vendedores
+        """
+        if df_order_items.empty or 'seller_id' not in df_order_items.columns:
+            return
+        
+        # Vendedores únicos dos order_items
+        sellers_in_items = set(df_order_items['seller_id'].dropna().unique())
+        
+        # Vendedores já na dimensão
+        sellers_in_dim = set(df_sellers['seller_id'].dropna().unique()) if not df_sellers.empty else set()
+        
+        # Vendedores faltantes
+        missing_sellers = sellers_in_items - sellers_in_dim
+        
+        if missing_sellers:
+            logger.info(f"  Adicionando {len(missing_sellers)} vendedores faltantes dos order_items à dimensão...")
+            
+            # Criar registros 'fantasma' para vendedores faltantes
+            ghost_sellers = pd.DataFrame({
+                'seller_id': list(missing_sellers),
+                'seller_state': [None] * len(missing_sellers),
+                'seller_city': [None] * len(missing_sellers),
+                'seller_zip_code_prefix': [None] * len(missing_sellers)
+            })
+            
+            # Carregar vendedores fantasma na dimensão
+            self.load_dim_sellers(ghost_sellers)
+    
+    def load_analytics(self, transformed: Dict[str, pd.DataFrame], datasets: Dict[str, pd.DataFrame] = None):
         """
         Carrega dados transformados no modelo estrela
         
         Args:
             transformed: Dicionário com datasets transformados
+            datasets: Dicionário com datasets brutos (opcional, para garantir integridade referencial)
         """
         logger.info("=" * 80)
         logger.info("CARREGANDO DADOS PARA MODELO ESTRELA")
@@ -859,6 +992,13 @@ class DatabaseLoader:
         
         if 'sellers' in transformed:
             self.load_dim_sellers(transformed['sellers'])
+        
+        # Garantir que todos os produtos/vendedores dos order_items estejam nas dimensões
+        if datasets and 'order_items' in datasets:
+            if 'products' in transformed:
+                self.ensure_products_from_order_items(datasets['order_items'], transformed['products'])
+            if 'sellers' in transformed:
+                self.ensure_sellers_from_order_items(datasets['order_items'], transformed['sellers'])
         
         if 'customers' in transformed and 'sellers' in transformed:
             self.load_dim_geography(transformed['customers'], transformed['sellers'])
@@ -912,7 +1052,7 @@ def load_all(datasets: Dict[str, pd.DataFrame], transformed: Dict[str, pd.DataFr
         loader.load_to_staging(datasets, source='csv')
         
         # Carregar analytics
-        loader.load_analytics(transformed)
+        loader.load_analytics(transformed, datasets)
         
         logger.info("=" * 80)
         logger.info("CARREGAMENTO CONCLUÍDO COM SUCESSO")
@@ -927,7 +1067,5 @@ def load_all(datasets: Dict[str, pd.DataFrame], transformed: Dict[str, pd.DataFr
 
 if __name__ == '__main__':
     # Teste básico
-    logging.basicConfig(level=logging.INFO)
-    
     print("Teste de carregamento - requer conexão PostgreSQL configurada")
     print("Use as variáveis de ambiente: DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT")

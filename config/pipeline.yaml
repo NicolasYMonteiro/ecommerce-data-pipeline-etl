@@ -2,7 +2,7 @@
 
 pipeline:
   # Comportamento do pipeline
-  load_to_db: false  # Pode ser sobrescrito por LOAD_TO_DB env var
+  load_to_db: true  # Pode ser sobrescrito por LOAD_TO_DB env var
   batch_size: 1000
   enable_validation: true
 
